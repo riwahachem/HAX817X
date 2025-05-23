@@ -1,0 +1,443 @@
+---
+title: "Statistiques exploratoires "
+author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+fontsize: 12pt
+lang: fr
+---
+
+\newpage
+
+# Chargement des données 
+
+```{r, warning=FALSE}
+library(readxl)  
+library(ggplot2)
+library(stats4)
+library(splines)
+list = read_excel('../data/Exp_rience.xlsx')
+list = list[1:63,] 
+list_k = list[1:63, 7:21] 
+list_kQ1 = list[1:63, 6:21] 
+```
+
+# Tracer théorique contre pratique.
+
+```{r, warning=FALSE}
+#Chargement des données
+Q1  <- list$`Q00_Max U`
+Q2  <- list$`Q00_16-20 Arad & Rubinstein`
+Q3  <- list$`Q00_Mode du groupe`
+Q4  <- list$Q00_ChatGPT
+Q5  <- list$`Q00_Prime de 20`
+Q6  <- list$`Q01_12-20`
+Q7  <- list$`Q02_Alaoui & Penta`
+Q8  <- list$`Q03_Alaoui & Penta plus`
+Q9  <- list$`Q04_Goeree moderate`
+Q10 <- list$`Q05_Goeree extreme`
+Q11 <- list$`Q06_Cycle A`
+Q12 <- list$`Q07_Cycle C`
+Q13 <- list$`Q08_Pan A`
+Q14 <- list$`Q09_Bear C` 
+Q15 <- list$`Q10_long pan A`
+Q16 <- list$`Q11_long pan C`
+
+#Analyse de fréquence 
+
+Q1r  <- table(Q1)  / length(Q1)
+Q2r  <- table(Q2)  / length(Q2)
+Q3r  <- table(Q3)  / length(Q3)
+Q4r  <- table(Q4)  / length(Q4)
+Q5r  <- table(Q5)  / length(Q5)
+Q6r  <- table(Q6)  / length(Q6)
+Q7r  <- table(Q7)  / length(Q7)
+Q8r  <- table(Q8)  / length(Q8)
+Q9r  <- table(Q9)  / length(Q9)
+Q10r <- table(Q10) / length(Q10)
+Q11r <- table(Q11) / length(Q11)
+Q12r <- table(Q12) / length(Q12)
+Q13r <- table(Q13) / length(Q13)
+Q14r <- table(Q14) / length(Q14)
+Q15r <- table(Q15) / length(Q15)
+Q16r <- table(Q16) / length(Q16)
+
+
+# Tracer de la théorie vs pratique pour NASH
+par(mfrow = c(1, 1))
+barplot(Q1r, col = "skyblue", border = "white", main = "Répartition des réponses à la question 1",
+        xlab = "Choix", ylab = "Fréquence", ylim = c(0, max(Q1r) * 1.2))
+legend("topright", legend = "Résultats pratiques Q1", fill = "skyblue", bty = "n")
+
+# Pour les Q2 à Q9 : résultats théoriques vs pratiques
+Q234t <- c(0.0, 0.4, 0.3, 0.2, 0.1)
+Q5t <- c(0.50, 0.20, 0.15, 0.10, 0.05)
+Q6t <- c(0.0, 0.4, 0.3, 0.2, 0.1)
+Q7t <- c(1, 0, 0, 0, 0)
+Q8t <- c(1, 0, 0, 0, 0)
+Q9t <- c(0.0, 0.1, 0.2, 0.3, 0.4)
+
+Qtheo <- list(Q234t, Q234t, Q234t, Q5t, Q6t, Q7t, Q8t, Q9t, Q6t, Q6t, Q6t, Q6t, Q6t, Q6t, Q6t)
+Qres <- list(Q2r, Q3r, Q4r, Q5r, Q6r, Q7r, Q8r, Q9r, Q10r, Q11r, Q12r, Q13r, Q14r, Q15r, Q16r)
+
+questions <- paste0("Q", 2:16)
+
+par(mfrow = c(4, 2), mar = c(4, 4, 3, 1))
+
+for (i in 1:length(Qtheo)) {
+  data <- rbind(Qtheo[[i]], Qres[[i]])
+  barplot(data, beside = TRUE, col = c("darkred", "steelblue"),
+          ylim = c(0, 1), names.arg = paste("Choix", 1:length(Qtheo[[i]])),
+          main = paste("Résultats -", questions[i]),
+          xlab = "Choix", ylab = "Probabilité")
+  legend("topright", legend = c("Théorique (Nash)", "Pratique"),
+         fill = c("darkred", "steelblue"), bty = "n")
+}
+
+```
+
+# Analyse des k-levels question globale ou cas par cas
+
+```{r, warning=FALSE}
+# Analyse des k-levels
+par(mfrow = c(1, 1))
+colonnes_pertinentes = names(list_k)
+tous_les_chiffres = c()
+
+for (colonne in colonnes_pertinentes) {
+  chiffres_extraits = abs(as.numeric(sub(" :.*", "", list_k[[colonne]]))-5)
+  tous_les_chiffres = c(tous_les_chiffres, chiffres_extraits)
+}
+tous_les_chiffres = tous_les_chiffres[!is.na(tous_les_chiffres)]
+distribution = (table(tous_les_chiffres)/sum(table(tous_les_chiffres)))*100
+print(distribution)
+barplot(distribution,main="Distribution des niveaux k global")
+
+# Pour avoir la distribution k-level au sein d'une même question sur notre échantillon
+colonnes_pertinentes = "Q00_Prime de 20"
+tous_les_chiffres = c()
+
+for (colonne in colonnes_pertinentes) {
+  chiffres_extraits = abs(as.numeric(sub(" :.*", "", list_k[[colonne]]))-5)
+  tous_les_chiffres = c(tous_les_chiffres, chiffres_extraits)
+}
+tous_les_chiffres = tous_les_chiffres[!is.na(tous_les_chiffres)]
+distribution = (table(tous_les_chiffres)/sum(table(tous_les_chiffres)))*100
+print(distribution)
+barplot(distribution,main="Distribution des niveaux k question prime 20")
+
+
+# Calculer la moyenne des réponses pour chaque individu
+moyennes_k = sapply(k_individus, function(x) mean(x, na.rm = TRUE))
+
+# Calcul de la moyenne générale
+moyenne_globale = mean(moyennes_k, na.rm = TRUE)
+
+# Créer un data frame pour ggplot
+df_moyennes = data.frame(
+  individu = 1:63,
+  moyenne_k = moyennes_k
+)
+
+# Tracé avec ligne de moyenne globale
+ggplot(df_moyennes, aes(x = individu, y = moyenne_k)) +
+  geom_col(fill = "cadetblue3") +
+  labs(
+    title = "",
+    x = "Individu",
+    y = "Ordre moyen des réponses"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),  # Lisibilité en vertical
+    axis.ticks.x = element_line()
+  ) +
+  scale_x_continuous(breaks = 1:63) 
+```
+# Petites statistiques 
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+# Voir le k-level d'un individu
+k_individus = list()
+for(i in 1:63){
+  k_individus[[i]]=abs(as.numeric(sub(" :.*", "", list_kQ1[i,]))-5)
+}
+
+k_individusframe = data.frame(valeur = k_individus)
+colnames(k_individusframe) = paste0("a", 1:ncol(k_individusframe))
+# Index des questions (2 à 16)
+questions = 1:16
+
+# Tracé avec formes différentes (shape) pour chaque joueur
+ggplot() +
+  geom_point(aes(x = questions, y = k_individusframe$a1, colour = "Joueur 1", shape = "Joueur 1"), size = 5) +
+  geom_point(aes(x = questions, y = k_individusframe$a6, colour = "Joueur 6", shape = "Joueur 6"), size = 5) +
+  geom_point(aes(x = questions, y = k_individusframe$a28, colour = "Joueur 28", shape = "Joueur 28"), size = 5) +
+  geom_point(aes(x = questions, y = k_individusframe$a45, colour = "Joueur 45", shape = "Joueur 45"), size = 5) +
+  labs(title = "", x = "Question", y = "Ordre de réponse", colour = "Joueur", shape = "Joueur") +
+  theme_minimal()
+
+
+# Pour voir la densité des k-levels dans une question.
+df_t <- t(k_individusframe)
+df_t <- as.data.frame(df_t) 
+
+df_long <- df_t %>% rownames_to_column("individu") %>% pivot_longer(cols = -individu,names_to = "question",values_to = "reponse") %>% drop_na()
+
+df_plot <- df_long %>% group_by(question, reponse) %>% summarise(nb = n(), .groups = "drop")
+df_plot$question <- factor(df_plot$question, levels = paste0("V", 1:63))  # adapte à ton nombre de questions
+
+# Voir les réponses des individus en fonctions de la densité et de la taille.
+
+ggplot(df_plot, aes(x = question, y = reponse)) +
+  geom_point(aes(size = nb, color = nb)) +
+  scale_size(range = c(1, 10)) +
+  scale_color_gradient(low = "cadetblue1", high = "cadetblue4") +
+  scale_x_discrete(labels = function(x) as.character(as.numeric(gsub("V", "", x)))) +
+  labs(
+    title = "",
+    x = "Question",
+    y = "niveau k",
+    size = "Nombre de réponses",
+    color = "Nombre de réponses"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90))
+
+# Voir si les lois suivis sont les mêmes.
+
+ggplot(df_long, aes(x = question, y = as.numeric(reponse))) +
+  geom_violin(fill = "lightblue", color = "darkblue") +
+   geom_jitter(width = 0.2, alpha = 0.4, color = "black", size = 0.8) +
+  scale_x_discrete(labels = 1:63) +
+  labs(
+    title = "",
+    x = "Question",
+    y = "Ordre de réponse"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, size = 7))
+
+```
+
+
+# Partie 3 du rapport
+
+## Within
+
+```{r, warning=FALSE}
+library(ggplot2)
+# Voir le k-level d'un individu
+k_individus = list()
+for(i in 1:63){
+  k_individus[[i]]=abs(as.numeric(sub(" :.*", "", list_k[i,]))-5)
+}
+
+# Étape 1 : extraire les niveaux k numériques
+k_mat <- as.data.frame(apply(list_k, 2, function(col) {
+  as.numeric(sub(" :.*", "", col))
+}))
+
+# Étape 2 : recentrer autour de 5 si tu veux mesurer la distance au centre
+k_mat <- abs(k_mat - 5)
+
+# Étape 3 : calcul de la moyenne individuelle en ignorant les NA
+k_moyenne_indiv <- rowMeans(k_mat, na.rm = TRUE)
+
+# Étape 4 : remplacement des NA par la moyenne individuelle
+for (i in 1:nrow(k_mat)) {
+  for (j in 1:ncol(k_mat)) {
+    if (is.na(k_mat[i, j])) {
+      k_mat[i, j] <- round(k_moyenne_indiv[i])
+    }
+  }
+}
+questions <- colnames(k_mat)
+n <- length(questions)
+# Créer une matrice vide pour stocker les p-values
+p_mat <- matrix(NA, nrow = n, ncol = n)
+rownames(p_mat) <- colnames(p_mat) <- questions
+
+n_permutations <- 10000
+
+for (i in 1:n) {
+  for (j in 1:n) {
+    if (i != j) {
+      cat("Question", i+1, "contre question", j+1, "\n")
+      x <- k_mat[[i]]
+      y <- k_mat[[j]]
+      
+      complete_cases <- complete.cases(x, y)
+      x_paired <- x[complete_cases]
+      y_paired <- y[complete_cases]
+      diffs <- x_paired - y_paired
+      
+      observed_stat <- mean(diffs)
+
+      # Générer la distribution nulle via permutation de signes
+      perm_stats <- replicate(n_permutations, {
+        signs <- sample(c(1, -1), length(diffs), replace = TRUE)
+        mean(signs * diffs)
+      })
+
+      # Calcul de la p-value bilatérale
+      p_val <- mean(abs(perm_stats) >= abs(observed_stat))
+
+      p_mat[i, j] <- p_val
+      #cat("Statistique observée :", observed_stat, "\n")
+      #cat("p-value :", p_val, "\n")
+    }
+  }
+}
+
+# Faire les observations et les conlusion par rapport a H0 et H1
+comparaisonQ2 = p_mat[1,2:5]
+comparaisonQ6 = p_mat[5, c(6,7,8,9,10,11,12)]
+comparaisonQ11 = p_mat[10, c(11,12,14)]
+comparaisonQ12 = p_mat[11, c(13,15)]
+comparaisonQ13 = p_mat[12,13]
+comparaisonQ15 = p_mat[14,15]
+
+# Visualisation
+
+# Extraire les p-values
+p_values <- c(comparaisonQ2, comparaisonQ6, comparaisonQ11, comparaisonQ12, comparaisonQ13, comparaisonQ15)
+
+# Créer des étiquettes lisibles pour chaque comparaison
+labels <- c(
+  "Q2 vs Q3", "Q2 vs Q4", "Q2 vs Q5", "Q2 vs Q6",
+  "Q6 vs Q7", "Q6 vs Q8", "Q6 vs Q9","Q6 vs Q10", "Q6 vs Q11", "Q6 vs Q12", "Q6 vs Q13",
+  "Q11 vs Q12", "Q11 vs Q13", "Q11 vs Q15",
+  "Q12 vs Q14", "Q12 vs Q16",
+  "Q13 vs Q14", 
+  "Q15 vs Q16"
+)
+
+df <- data.frame(
+  Comparaison = factor(labels, levels = labels),
+  p_value = p_values,
+  significatif = p_values < 0.05
+)
+
+# Graphique
+ggplot(df, aes(x = Comparaison, y = p_value, fill = significatif)) +
+  geom_col(width = 0.7) +
+  scale_fill_manual(values = c("skyblue", "tomato"), labels = c("Non significatif", "Significatif")) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "red") +
+  labs(title = "",
+       x = "Comparaison",
+       y = "P-value",
+       fill = "Résultat") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Trier par p-value croissante
+df_sorted <- df[order(df$p_value), ]
+df_sorted$rank <- 1:nrow(df_sorted)
+
+# Calcul du seuil BH
+alpha <- 0.05
+m <- nrow(df_sorted)
+df_sorted$bh_threshold <- (df_sorted$rank / m) * alpha
+
+# Assurer l'ordre des comparaisons dans l'axe X
+df_sorted$Comparaison <- factor(df_sorted$Comparaison, levels = df_sorted$Comparaison)
+
+# Graphique
+ggplot(df_sorted, aes(x = Comparaison, y = p_value)) +
+  geom_point(aes(color = p_value < bh_threshold), size = 2) +
+  geom_line(aes(x = Comparaison, y = bh_threshold, group = 1), color = "darkgreen", size = 1) +
+  scale_color_manual(values = c("red", "blue"), labels = c("Non significatif", "Significatif")) +
+  labs(title = "",
+       x = "Comparaison",
+       y = "p-value",
+       color = "Résultat") +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+## Between
+
+```{r, warning=FALSE}
+observe = list(a=Q1r, b=Q2r, c=Q3r, d=Q4r, e=Q5r, f=Q6r, g=Q7r, h=Q8r, i=Q9r, j=Q10r, k=Q11r, l=Q12r, m=Q13r, n=Q14r, o=Q15r, p=Q16r)
+theorique = list(ta = 0, tb = Q234t, tc = Q234t, td = Q234t, te=c(0.50, 0.20, 0.15, 0.10, 0.05), tf =c(0.0, 0.4, 0.3, 0.2, 0.1), tg=c(0.33333333, 0.26666667, 0.20000000, 0.13333333, 0.06666667), th= c(0.0, 0.3, 0.4, 0.1, 0.2), ti=c(0.0, 0.1, 0.2, 0.3, 0.4))
+
+comparaisonchisq <- function(QO, QT){
+  observe = QO
+  theorique = QT
+  # Observé
+  observe = Q4r  # Q4 = list$Q00_ChatGPT
+  # Théorie (par exemple : prédiction de NASH)
+  theorique <- Q234t * sum(observe)  # mêmes effectifs que la taille totale
+  names(theorique) <- names(observe)  # assurer le même nommage
+  a = chisq.test(x = observe, p = theorique / sum(theorique))
+  return(a)
+}
+comparaisonchisq(observe$b, theorique$tc)
+comparaisonchisq(observe$b, theorique$td)
+comparaisonchisq(observe$b, theorique$te)
+comparaisonchisq(observe$f, theorique$tg)
+comparaisonchisq(observe$f, theorique$th)
+
+```
+
+# Question 17
+
+```{r, warning=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+donnees <- read_excel("./data/Exp_rience.xlsx")
+
+# Extraire les colonnes
+colonnes_comp <- donnees %>% select(starts_with("Q12_Compréhension"))
+
+# Convertir en numérique
+colonnes_comp <- mutate_all(colonnes_comp, ~as.numeric(.))
+
+# Somme des incompréhensions par question
+freq_incomprises <- colSums(colonnes_comp, na.rm = TRUE)
+
+# Créer le tableau pour ggplot
+df_compr <- data.frame(
+  Question = 1:16,
+  NbParticipants = as.numeric(freq_incomprises/63)
+)
+
+# Graphe
+ggplot(df_compr, aes(x = Question, y = NbParticipants)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  scale_x_continuous(breaks = 1:16) +
+  labs(x = "Question", y = "Pourcentage d'incompréhensions") +
+  theme_minimal()
+
+
+```
+
+# Pour illustrer le paragraphe NI dans le rapport
+
+```{r}
+library(ggplot2)
+df <- data.frame(
+  Action = factor(c(16, 17, 18, 19, 20)),  # facteur pour un bon affichage sur l'axe x
+  P_a = c(0.118, 0.148, 0.201, 0.309, 0.224)
+)
+
+# Tracer le graphique
+ggplot(df, aes(x = Action, y = P_a)) +
+  geom_bar(stat = "identity", fill = "lightgrey", color = "black") +
+  labs(title = "",
+       x = "Action",
+       y = "Fréquence (en %)") +
+  theme_minimal()
+```

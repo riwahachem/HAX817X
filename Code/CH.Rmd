@@ -1,0 +1,333 @@
+---
+title: "Modèle de Hiérarchie Cognitive"
+author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+fontsize: 12pt
+lang: fr
+---
+
+\newpage
+
+# Chargement des bibliothèques et données
+
+```{r, message=FALSE, warning=FALSE}
+library(readxl)
+library(xtable)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+donnees <- read_excel('../data/Exp_rience.xlsx')
+```
+
+```{r, warning=FALSE}
+questions <- c("Q00_16-20 Arad & Rubinstein", "Q00_Mode du groupe", "Q00_ChatGPT",
+               "Q00_Prime de 20","Q01_12-20" ,"Q02_Alaoui & Penta", "Q03_Alaoui & Penta plus",
+               "Q04_Goeree moderate", "Q05_Goeree extreme", "Q06_Cycle A", "Q07_Cycle C", 
+               "Q08_Pan A", "Q09_Bear C", "Q10_long pan A", "Q11_long pan C")
+
+actions_par_question <- list(
+  "Q00_16-20 Arad & Rubinstein" = 16:20,
+  "Q00_Mode du groupe" = 16:20,
+  "Q00_ChatGPT" = 16:20,
+  "Q00_Prime de 20" = 16:20,
+  "Q01_12-20" = c(12,14,16,18,20), 
+  "Q02_Alaoui & Penta" = c(12,14,16,18,20), 
+  "Q03_Alaoui & Penta plus" = c(12,14,16,18,20),
+  "Q04_Goeree moderate" = c(14,12,18,16,20),
+  "Q05_Goeree extreme" = c(18,16,14,12,20),
+  "Q06_Cycle A" = c(12, 14, 16, 18, 20),
+  "Q07_Cycle C" = c(12, 14, 16, 18, 20),
+  "Q08_Pan A" = c(12, 14, 16, 18, 20),
+  "Q09_Bear C" = c(12, 14, 16, 18, 20),
+  "Q10_long pan A" = c(12, 14, 16, 18, 20),
+  "Q11_long pan C" = c(12, 14, 16, 18, 20)
+)
+
+bonus_par_question <- list(
+  "Q00_16-20 Arad & Rubinstein" = list(gauche = 10, egal = 0),
+  "Q00_Mode du groupe" = list(gauche = 10, egal = 0),
+  "Q00_ChatGPT" = list(gauche = 10, egal = 0),
+  "Q00_Prime de 20" = list(gauche = 20, egal = 0),
+  "Q01_12-20" = list(gauche = 20, egal = 0),
+  "Q02_Alaoui & Penta" = list(gauche = 20, egal = 10),
+  "Q03_Alaoui & Penta plus" = list(gauche = 40, egal = 10),
+  "Q04_Goeree moderate" = list(gauche = 20, egal = 0),
+  "Q05_Goeree extreme" = list(gauche = 20, egal = 0),
+  "Q06_Cycle A" = list(gauche = 20, egal = 0),
+  "Q07_Cycle C" = list(gauche = 20, egal = 0),
+  "Q08_Pan A" = list(gauche = 20, egal = 0),
+  "Q09_Bear C" = list(gauche = 20, egal = 0),
+  "Q10_long pan A" = list(gauche = 20, egal = 0),
+  "Q11_long pan C" = list(gauche = 20, egal = 0)
+)
+```
+
+# Algorithme 
+
+## Fonction stratégie CH bruité 
+
+Description : Calcule la distribution de probabilité d’un joueur de niveau k dans un modèle CH (bruité), en supposant que les joueurs de niveau k anticipent les niveaux inférieurs.
+
+```{r, warning=FALSE}
+ch_strategy <- function(mu, k, actions, bonus_gauche, bonus_egal) {
+  
+  # Absence de raisonnement stratégique : proba uniforme sur les actions 
+  if (k == 0) {
+    probs <- rep(1 / length(actions), length(actions))
+  } 
+  
+  # k > 0 : simuler une anticipation 
+  else {
+
+    ## Appel récursif de la fonction pour les niveaux < k
+    ## Renvoie une distribution de probabilités pour chaque niveau 
+    lower_levels <- lapply(0:(k-1), function(l) ch_strategy(mu, l, actions, bonus_gauche, bonus_egal))
+    
+    ## Moyenne des distributions des probabilités de lower_levels
+    ## Représente la croyance du joueur k sur le comportement MOYEN des joueurs < k 
+    avg_lower <- Reduce("+", lower_levels) / length(lower_levels)
+    
+    ## Gain espéré en fonction des stratégies inférieures 
+    expected_payoff <- sapply(seq_along(actions), function(a_idx) {
+      a <- actions[a_idx]
+      bonus_left <- if (a_idx < length(actions)) avg_lower[a_idx + 1] * bonus_gauche else 0
+      bonus_same <- avg_lower[a_idx] * bonus_egal
+      gain <- a + bonus_left + bonus_same
+      return(gain)
+    })
+    
+    ## Introduction du bruit 
+    probs <- exp(expected_payoff / mu)
+    
+    ## Normalisation -> proba 
+    probs <- probs / sum(probs)
+  }
+  return(probs)
+}
+```
+
+## Fonction log-vraisemblance CH bruité
+
+Description : Calcule la log-vraisemblance des réponses d’un individu dans un modèle CH (bruité), pour pouvoir ensuite estimer les paramètres $\mu$ et s. 
+
+```{r, warning=FALSE}
+log_likelihood_ch <- function(mu, s, reponses, questions, actions_map, k_max = 4) {
+  
+  # Initialisation 
+  total_loglik <- 0
+  
+  # Répartition des niveaux de raisonnement selon une loi de Poisson
+  poisson_weights <- dpois(0:k_max, lambda = s)
+  
+  # Normalisation -> proba 
+  poisson_weights <- poisson_weights / sum(poisson_weights)
+  
+  # Boucle sur les réponses 
+  for (j in seq_along(reponses)) {
+    
+    ## Attribution des réponses, des actions et des bonus pour une question 
+    r <- reponses[j]
+    q <- questions[j]
+    actions <- actions_map[[q]]
+    bonus <- bonus_par_question[[q]]
+    
+    ## Calcul des stratégies pour chaque niveau de raisonnement k (distribution de proba)
+    ch_levels <- lapply(0:k_max, function(k) {
+      ch_strategy(mu, k, actions, bonus$gauche, bonus$egal)
+    })
+    
+    if (!is.na(r)) {
+      idx <- which(actions == r)
+      if (length(idx) == 1) {
+        
+        ### Calcul de la proba du choix observé 
+        p_r <- sum(vapply(0:k_max, function(k) poisson_weights[k+1] * ch_levels[[k+1]][idx], numeric(1)))
+      } 
+      else {
+        p_r <- 0
+      }
+      
+      ## Vérifier existence et validité de la proba 
+      if (p_r > 0 && !is.na(p_r)) {
+        total_loglik <- total_loglik + log(p_r)
+      } 
+      ### Sinon, forte pénalité
+      else {
+        total_loglik <- total_loglik - 1e6
+      }
+    }
+  }
+  return(total_loglik)
+}
+```
+
+## Fonctions score de Brier
+
+Description : Calcule le score de Brier pour une question 
+
+```{r, warning=FALSE}
+calcul_brier_score <- function(probs, reponse_obs, actions) {
+  idx_obs <- which(actions == reponse_obs)
+  brier <- sum((probs - ifelse(seq_along(actions) == idx_obs, 1, 0))^2)
+  return(brier)
+}
+```
+
+Description : Calcule un score de Brier total sur l'ensemble des réponses aux questions selon un modèle de Hiérarchie Cognitive (bruité). 
+
+```{r, warning=FALSE}
+brier_score_total <- function(mu, s, reponses, questions, actions_map, k_max = 4) {
+  
+  # Initialisation 
+  total_brier <- 0
+  
+  # Répartition des niveaux de raisonnement selon une loi de Poisson
+  poisson_weights <- dpois(0:k_max, lambda = s)
+  
+  # Normalisation -> proba 
+  poisson_weights <- poisson_weights / sum(poisson_weights)
+  
+  # Boucle sur les réponses 
+  for (j in seq_along(reponses)) {
+    
+    ## Attribution des réponses, des actions et des bonus pour une question 
+    r <- reponses[j]
+    q <- questions[j]
+    actions <- actions_map[[q]]
+    bonus <- bonus_par_question[[q]]
+    
+    ## Calcul des stratégies pour chaque niveau de raisonnement k (distribution de proba)
+    if (is.na(r) || !(r %in% actions)) next
+    ch_levels <- lapply(0:k_max, function(k) {
+      ch_strategy(mu, k, actions, bonus$gauche, bonus$egal)
+    })
+    
+    # Moyenne des stratégies -> donne la distribution des probas 
+    mix_prob <- Reduce("+", Map("*", poisson_weights, ch_levels))
+    
+    # Calcul du score à partir de la fonction calcul_brier_score et des probas obtenues
+    total_brier <- total_brier + calcul_brier_score(mix_prob, r, actions)
+  }
+  return(total_brier/15)
+}
+```
+
+## Estimation CH bruité
+
+Description : Pour chaque individu, on cherche les paramètres $\mu$ et s qui maximisent la log-vraisemblance
+
+```{r, warning=FALSE}
+# Initialisation du tableau des résultats 
+resultats_ch <- data.frame()
+
+# Boucle sur les individus 
+for (i in 1:(nrow(donnees)-1)) {
+  individu <- donnees[i, ]
+  
+  # Ne garder que la partie droite pour les écritures "0:20" de la table 
+  reponses <- sapply(questions, function(q) {
+    rep <- individu[[q]]
+    if (!is.na(rep) && grepl(":", rep)) {
+      val <- as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      val <- as.numeric(trimws(rep))
+    }
+    return(val)
+  })
+  
+  tryCatch({
+    opt <- optim(
+      par = c(mu = 1, s = 1.5),
+      fn = function(par) -log_likelihood_ch(par[1], par[2], reponses, questions, actions_par_question),
+      method = "L-BFGS-B",
+      ## Contraintes : bornes sur µ et s 
+      lower = c(0.01, 0.01), upper = c(10, 10) 
+    )
+    
+    # Récupération des résultats 
+    mu_estime <- round(opt$par[1],3)
+    s_estime <- round(opt$par[2],3)
+    max_vraisemblance <- round(-opt$value,3)  # - pour revenir au max  
+    brier_score <- round(brier_score_total(mu_estime, s_estime, reponses, questions, actions_par_question), 3)
+    
+    # Ajout des résultats au tableau 
+    resultats_ch <- rbind(resultats_ch, data.frame(id = i, 
+                                                   mu = mu_estime, 
+                                                   s = s_estime, 
+                                                   VraisemblanceMax = max_vraisemblance,
+                                                   Brier = brier_score))
+  },
+  
+  # Gestion des erreurs : ligne de NA si problème 
+  error = function(e) {
+    resultats_ch <- rbind(resultats_ch, data.frame(id = i, mu = NA, s = NA, VraisemblanceMax = NA))
+    cat("Erreur pour l'individu", i, ":", e$message, "\n")
+  })
+}
+```
+
+```{r, warning=FALSE}
+print(resultats_ch)
+```
+
+## Estimation par question
+
+```{r,}
+resultats_ch_par_question <- data.frame()
+
+# Boucle sur chaque question ----
+for (q in questions) {
+  actions <- actions_par_question[[q]]
+  bonus <- bonus_par_question[[q]]
+  
+  reponses <- sapply(donnees[[q]], function(rep) {
+    if (!is.na(rep) && grepl(":", rep)) {
+      as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      as.numeric(trimws(rep))
+    }
+  })
+  
+  tryCatch({
+    # Optimisation des paramètres mu et s
+    opt <- optim(
+      par = c(mu = 1.5, s = 1.5),
+      fn = function(par) -log_likelihood_ch(par[1], par[2],
+                                            reponses = reponses,
+                                            questions = rep(q, length(reponses)),
+                                            actions_map = actions_par_question),
+      method = "L-BFGS-B",
+      lower = c(0.01, 0.01), upper = c(10, 10)
+    )
+    
+    # Résultats estimés
+    mu_estime <- round(opt$par[1], 3)
+    s_estime <- round(opt$par[2], 3)
+    loglik <- round(-opt$value, 3)
+    brier <- round(brier_score_total(mu_estime, s_estime,
+                                     reponses = reponses,
+                                     questions = rep(q, length(reponses)),
+                                     actions_map = actions_par_question), 3)
+    
+    # Ajout au tableau
+    resultats_ch_par_question <- rbind(resultats_ch_par_question,
+                                       data.frame(Question = q,
+                                                  mu = mu_estime,
+                                                  s = s_estime,
+                                                  LogVraisemblance = loglik,
+                                                  Brier = brier))
+    
+  }, error = function(e) {
+    resultats_ch_par_question <- rbind(resultats_ch_par_question,
+                                       data.frame(Question = q,
+                                                  mu = NA, s = NA,
+                                                  LogVraisemblance = NA,
+                                                  Brier = NA))
+    cat("Erreur pour la question", q, ":", e$message, "\n")
+  })
+}
+```

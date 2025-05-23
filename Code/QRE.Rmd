@@ -1,0 +1,310 @@
+---
+title: "Modèle Quantal Response Equilibrium"
+author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+fontsize: 12pt
+lang: fr
+---
+
+\newpage
+
+# Introduction
+
+Ce document présente une estimation individuelle du modèle **Quantal Response Equilibrium (QRE)** basé sur les données collectées. Nous estimons pour chaque participant le paramètre $\lambda$, mesurant la sensibilité aux gains. L’ajustement du modèle est évalué par la log-vraisemblance et le score de Brier.
+
+# Chargement des bibliothèques et données
+
+```{r, message=FALSE, warning=FALSE}
+library(readxl)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(xtable)
+library(factoextra)
+
+donnees <- read_excel('../data/Exp_rience.xlsx')
+```
+
+```{r, warning=FALSE}
+questions <- c("Q00_16-20 Arad & Rubinstein", "Q00_Mode du groupe", "Q00_ChatGPT",
+               "Q00_Prime de 20","Q01_12-20" ,"Q02_Alaoui & Penta", "Q03_Alaoui & Penta plus",
+               "Q04_Goeree moderate", "Q05_Goeree extreme", "Q06_Cycle A", "Q07_Cycle C", 
+               "Q08_Pan A", "Q09_Bear C", "Q10_long pan A", "Q11_long pan C")
+
+
+actions_par_question <- list(
+  "Q00_16-20 Arad & Rubinstein" = 16:20,
+  "Q00_Mode du groupe" = 16:20,
+  "Q00_ChatGPT" = 16:20,
+  "Q00_Prime de 20" = 16:20,
+  "Q01_12-20" = c(12,14,16,18,20), 
+  "Q02_Alaoui & Penta" = c(12,14,16,18,20), 
+  "Q03_Alaoui & Penta plus" = c(12,14,16,18,20),
+  "Q04_Goeree moderate" = c(14,12,18,16,20),
+  "Q05_Goeree extreme" = c(18,16,14,12,20),
+  "Q06_Cycle A" = c(12, 14, 16, 18, 20),
+  "Q07_Cycle C" = c(12, 14, 16, 18, 20),
+  "Q08_Pan A" = c(12, 14, 16, 18, 20),
+  "Q09_Bear C" = c(12, 14, 16, 18, 20),
+  "Q10_long pan A" = c(12, 14, 16, 18, 20),
+  "Q11_long pan C" = c(12, 14, 16, 18, 20)
+)
+
+bonus_par_question <- list(
+  "Q00_16-20 Arad & Rubinstein" = list(gauche = 10, egal = 0),
+  "Q00_Mode du groupe" = list(gauche = 10, egal = 0),
+  "Q00_ChatGPT" = list(gauche = 10, egal = 0),
+  "Q00_Prime de 20" = list(gauche = 20, egal = 0),
+  "Q01_12-20" = list(gauche = 20, egal = 0),
+  "Q02_Alaoui & Penta" = list(gauche = 20, egal = 10),
+  "Q03_Alaoui & Penta plus" = list(gauche = 40, egal = 10),
+  "Q04_Goeree moderate" = list(gauche = 20, egal = 0),
+  "Q05_Goeree extreme" = list(gauche = 20, egal = 0),
+  "Q06_Cycle A" = list(gauche = 20, egal = 0),
+  "Q07_Cycle C" = list(gauche = 20, egal = 0),
+  "Q08_Pan A" = list(gauche = 20, egal = 0),
+  "Q09_Bear C" = list(gauche = 20, egal = 0),
+  "Q10_long pan A" = list(gauche = 20, egal = 0),
+  "Q11_long pan C" = list(gauche = 20, egal = 0)
+)
+```
+
+# Fonctions
+
+```{r, warning=FALSE}
+logit_qre_response <- function(payoffs, lambda) {
+  exp_payoff <- exp(lambda * payoffs)
+  exp_payoff / sum(exp_payoff)
+}
+
+qre_strategy <- function(lambda, actions, bonus_gauche, bonus_egal) {
+  expected_payoff <- sapply(seq_along(actions), function(a_idx) {
+    a <- actions[a_idx]
+    if (a_idx < length(actions)) {
+      bonus_pos <- a_idx + 1
+      bonus_left <- bonus_gauche
+    } else {
+      bonus_left <- 0
+    }
+    bonus_same <- bonus_egal
+    gain <- a + bonus_left + bonus_same
+    return(gain)
+  })
+  
+  probs <- logit_qre_response(expected_payoff, lambda)
+  return(probs)
+}
+
+```
+
+# Log-vraisemblance et estimation
+
+```{r, warning=FALSE}
+log_likelihood_qre <- function(lambda, reponses, questions, actions_map) {
+  total_loglik <- 0
+  
+  for (j in seq_along(reponses)) {
+    r <- reponses[j]
+    q <- questions[j]
+    actions <- actions_map[[q]]
+    bonus <- bonus_par_question[[q]]
+    
+    qre_probs <- qre_strategy(lambda, actions, bonus_gauche = bonus$gauche, bonus_egal = bonus$egal)
+    
+    if (!is.na(r)) {
+      idx <- which(actions == r)
+      if (length(idx) == 1) {
+        p_r <- qre_probs[idx]
+      } else {
+        p_r <- 0
+      }
+      if (p_r > 0 && !is.na(p_r)) {
+        total_loglik <- total_loglik + log(p_r)
+      } else {
+        total_loglik <- total_loglik - 1e6
+      }
+    }
+  }
+  
+  return(total_loglik)
+}
+```
+
+# Estimation individuelle
+
+```{r, warning=FALSE}
+resultats_qre <- data.frame()
+
+for (i in 1:(nrow(donnees)-1)) {
+  individu <- donnees[i, ]
+  
+  reponses <- sapply(questions, function(q) {
+    rep <- individu[[q]]
+    if (!is.na(rep) && grepl(":", rep)) {
+      val <- as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      val <- as.numeric(trimws(rep))
+    }
+    return(val)
+  })
+  
+  tryCatch({
+    opt <- optim(
+      par = c(lambda = 1),
+      fn = function(par) -log_likelihood_qre(par[1], reponses, questions, actions_par_question),
+      method = "L-BFGS-B",
+      lower = c(0.01), upper = c(20)
+    )
+    
+    lambda_estime <- round(opt$par[1], 3)
+    max_vraisemblance <- round(-opt$value, 3)
+    
+    # Score de Brier
+    brier_total <- 0
+    nb_valides <- 0
+    
+    for (j in seq_along(reponses)) {
+      r <- reponses[j]
+      q <- questions[j]
+      actions <- actions_par_question[[q]]
+      bonus <- bonus_par_question[[q]]
+      
+      qre_probs <- qre_strategy(lambda_estime, actions, bonus_gauche = bonus$gauche, bonus_egal = bonus$egal)
+      
+      if (!is.na(r)) {
+        y_true <- rep(0, length(actions))
+        idx <- which(actions == r)
+        if (length(idx) == 1) {
+          y_true[idx] <- 1
+          brier_score <- sum((qre_probs - y_true)^2)
+          brier_total <- brier_total + brier_score
+          nb_valides <- nb_valides + 1
+        }
+      }
+    }
+    
+    brier_moyen <- ifelse(nb_valides > 0, brier_total / nb_valides, NA)
+    
+    resultats_qre <- rbind(resultats_qre, data.frame(
+      id = i,
+      lambda = lambda_estime,
+      VraisemblanceMax = max_vraisemblance,
+      BrierScore = round(brier_moyen, 4)
+    ))
+    
+  }, error = function(e) {
+    resultats_qre <- rbind(resultats_qre, data.frame(
+      id = i,
+      lambda = NA,
+      VraisemblanceMax = NA,
+      BrierScore = NA
+    ))
+    cat("Erreur pour l'individu", i, ":", e$message, "\n")
+  })
+}
+print(resultats_qre)
+```
+
+# Visualisation
+
+```{r, warning=FALSE}
+resultats_long <- resultats_qre %>%
+  mutate(VraisemblanceMax_scaled = -VraisemblanceMax / 50) %>%
+  pivot_longer(cols = c(lambda, VraisemblanceMax_scaled, BrierScore), 
+               names_to = "parametre", values_to = "valeur") %>%
+  mutate(parametre = recode(parametre, 
+                            "lambda" = "Lambda (λ)", 
+                            "VraisemblanceMax_scaled" = "-Log-vraisemblance", 
+                            "BrierScore" = "Score de Brier"))
+
+ggplot(resultats_qre, aes(x = lambda, y = BrierScore)) +
+  geom_point(color = "darkblue", size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "",
+    x = expression(lambda),
+    y = "Score de Brier"
+  )
+```
+
+# Estimation par question 
+
+```{r, warning=FALSE}
+resultats_par_question_qre <- data.frame()
+
+for (q in questions) {
+  actions <- actions_par_question[[q]]
+  bonus <- bonus_par_question[[q]]
+  
+  reponses <- sapply(donnees[[q]], function(rep) {
+    if (!is.na(rep) && grepl(":", rep)) {
+      as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      as.numeric(trimws(rep))
+    }
+  })
+  
+  tryCatch({
+    opt <- optim(
+      par = c(lambda = 1),
+      fn = function(par) {
+        lambda <- par[1]
+        total_loglik <- 0
+        for (j in seq_along(reponses)) {
+          r <- reponses[j]
+          if (is.na(r) || !(r %in% actions)) next
+          probs <- qre_strategy(lambda, actions, bonus$gauche, bonus$egal)
+          idx <- which(actions == r)
+          p_r <- probs[idx]
+          total_loglik <- total_loglik + ifelse(p_r > 0, log(p_r), -1e6)
+        }
+        return(-total_loglik)
+      },
+      method = "L-BFGS-B", lower = 0.01, upper = 20
+    )
+    
+    lambda_estime <- round(opt$par[1], 3)
+    loglik <- round(-opt$value, 3)
+    
+    # Score de Brier
+    brier_total <- 0
+    n_valid <- 0
+    
+    for (j in seq_along(reponses)) {
+      r <- reponses[j]
+      if (is.na(r) || !(r %in% actions)) next
+      probs <- qre_strategy(lambda_estime, actions, bonus$gauche, bonus$egal)
+      y_true <- rep(0, length(actions))
+      idx <- which(actions == r)
+      y_true[idx] <- 1
+      brier_total <- brier_total + sum((probs - y_true)^2)
+      n_valid <- n_valid + 1
+    }
+    
+    brier_moyen <- if (n_valid > 0) round(brier_total / n_valid, 4) else NA
+    
+    resultats_par_question_qre <- rbind(resultats_par_question_qre, data.frame(
+      Question = q,
+      lambda = lambda_estime,
+      LogVraisemblance = loglik,
+      Brier = brier_moyen
+    ))
+    
+  }, error = function(e) {
+    resultats_par_question_qre <- rbind(resultats_par_question_qre, data.frame(
+      Question = q,
+      lambda = NA,
+      LogVraisemblance = NA,
+      Brier = NA
+    ))
+    cat("Erreur pour la question", q, ":", e$message, "\n")
+  })
+}
+
+# Affichage final
+print(resultats_par_question_qre)
+```

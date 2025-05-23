@@ -1,0 +1,15 @@
+# latex
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.gz
+*.toc
+
+# macOS
+.DS_Store
+
+.Rproj.user
+.Rhistory
+.RData
