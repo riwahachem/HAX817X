@@ -276,7 +276,49 @@ print(resultats_ch)
 
 ## Estimation par question
 
+Description : Calcule un score de Brier total sur l'ensemble des réponses aux questions selon un modèle de Hiérarchie Cognitive (bruité)
+
 ```{r,}
+brier_score_total <- function(mu, s, reponses, questions, actions_map, k_max = 4) {
+  
+  # Initialisation 
+  total_brier <- 0
+  
+  # Répartition des niveaux de raisonnement selon une loi de Poisson
+  poisson_weights <- dpois(0:k_max, lambda = s)
+  
+  # Normalisation -> proba 
+  poisson_weights <- poisson_weights / sum(poisson_weights)
+  
+  valid_n <- 0
+  
+  # Boucle sur les réponses 
+  for (j in seq_along(reponses)) {
+    
+    ## Attribution des réponses, des actions et des bonus pour une question 
+    r <- reponses[j]
+    q <- questions[j]
+    actions <- actions_map[[q]]
+    bonus <- bonus_par_question[[q]]
+    
+    ## Calcul des stratégies pour chaque niveau de raisonnement k (distribution de proba)
+    if (is.na(r) || !(r %in% actions)) next
+    ch_levels <- lapply(0:k_max, function(k) {
+      ch_strategy(mu, k, actions, bonus$gauche, bonus$egal)
+    })
+    valid_n <- valid_n + 1
+    
+    
+    # Moyenne des stratégies -> donne la distribution des probas 
+    mix_prob <- Reduce("+", Map("*", poisson_weights, ch_levels))
+    
+    # Calcul du score à partir de la fonction calcul_brier_score et des probas obtenues
+    total_brier <- total_brier + calcul_brier_score(mix_prob, r, actions)
+  }
+  return(total_brier/valid_n)
+}
+
+# Initialisation ----
 resultats_ch_par_question <- data.frame()
 
 # Boucle sur chaque question ----
@@ -330,4 +372,7 @@ for (q in questions) {
     cat("Erreur pour la question", q, ":", e$message, "\n")
   })
 }
+
+# Affichage
+print(resultats_ch_par_question)
 ```
