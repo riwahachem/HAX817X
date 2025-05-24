@@ -424,12 +424,12 @@ ggplot(df_compr, aes(x = Question, y = NbParticipants)) +
 
 ```
 
-# Pour illustrer le paragraphe NI dans le rapport
+# Pour illustrer le paragraphe NI 
 
 ```{r}
 library(ggplot2)
 df <- data.frame(
-  Action = factor(c(16, 17, 18, 19, 20)),  # facteur pour un bon affichage sur l'axe x
+  Action = factor(c(16, 17, 18, 19, 20)), 
   P_a = c(0.118, 0.148, 0.201, 0.309, 0.224)
 )
 

@@ -4,7 +4,7 @@ author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
 date: "`r Sys.Date()`"
 output:
   pdf_document:
-    toc: true
+    latex_engine: xelatex
 fontsize: 12pt
 lang: fr
 ---
@@ -24,6 +24,7 @@ library(dplyr)
 library(xtable)
 
 donnees <- read_excel('../data/Exp_rience.xlsx')
+donneesQ = donnees[1:63,7:21]
 ```
 
 
@@ -302,4 +303,84 @@ for (q in questions) {
 
 
 print(resultats_par_question)
+```
+
+# Génération des graphiques
+
+```{r, warning=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(readxl)
+
+# Liste pour stocker les graphiques
+plots <- list()
+
+# Boucle sur les 15 questions
+for (q in 1:15) {
+  actions <- actions_par_question[[q]]
+  bonus <- bonus_par_question[[q]]
+  
+  reponses <- sapply(donneesQ[[q]], function(rep) {
+    if (!is.na(rep) && grepl(":", rep)) {
+      as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      as.numeric(trimws(rep))
+    }
+  })
+  tryCatch({
+    opt <- optim(
+      par = c(mu = 1.5, s = 1.5),
+      fn = function(par) -log_likelihood_question(par[1], par[2], reponses, actions, bonus),
+      method = "L-BFGS-B", lower = c(0.01, 0.01), upper = c(30, 30)
+    )
+    
+    mu <- opt$par[1]
+    s <- opt$par[2]
+    k_max <- 4
+    
+    poids_k <- dpois(0:k_max, lambda = s)
+    poids_k <- poids_k / sum(poids_k)
+    
+    strats_k <- lapply(0:k_max, function(k) {
+      ni_strategy(mu, k, actions, bonus$gauche, bonus$egal)
+    })
+    
+    strategie_ni <- Reduce(`+`, Map(`*`, poids_k, strats_k))
+    
+    df_pred <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = strategie_ni,
+      Type = "Prévu"
+    )
+    
+    Q  <- donneesQ[[q]]
+    Qr <- table(Q) / length(Q)
+    df_obs <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = as.numeric(Qr),
+      Type = "Observé"
+    )
+    
+    df_combined <- rbind(df_pred, df_obs)
+    
+    p <- ggplot(df_combined, aes(x = Action, y = Valeur, fill = Type)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      labs(title = paste("Question", q+1),
+           x = "Action possible", y = "Fréquence") +
+      scale_fill_manual(values = c("Observé" = "black", "Prévu" = "lightgrey")) +
+      theme_minimal(base_size = 10) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "none")
+    
+    plots[[length(plots) + 1]] <- p
+    
+  }, error = function(e) {
+    cat("Erreur lors du traitement de la question", q, ":", e$message, "\n")
+  })
+}
+
+# Exporter tous les graphiques sur une seule page PDF (5 colonnes × 3 lignes)
+pdf("comparaison_superposee_5x3.pdf", width = 20, height = 12)
+ggarrange(plotlist = plots, ncol = 5)
+dev.off()
 ```

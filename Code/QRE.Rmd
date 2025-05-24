@@ -4,7 +4,7 @@ author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
 date: "`r Sys.Date()`"
 output:
   pdf_document:
-    toc: true
+    latex_engine: xelatex
 fontsize: 12pt
 lang: fr
 ---
@@ -26,6 +26,7 @@ library(xtable)
 library(factoextra)
 
 donnees <- read_excel('../data/Exp_rience.xlsx')
+donneesQ = donnees[1:63,7:21]
 ```
 
 ```{r, warning=FALSE}
@@ -307,4 +308,87 @@ for (q in questions) {
 
 # Affichage final
 print(resultats_par_question_qre)
+```
+
+# Génération des graphiques
+
+```{r, warning=FALSE}
+plots <- list()
+
+for (q in 1:15) {
+  actions <- actions_par_question[[q]]
+  bonus <- bonus_par_question[[q]]
+  
+  reponses <- sapply(donneesQ[[q]], function(rep) {
+    if (!is.na(rep) && grepl(":", rep)) {
+      as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      as.numeric(trimws(rep))
+    }
+  })
+  
+  tryCatch({
+    opt <- optim(
+      par = c(lambda = 1),
+      fn = function(par) {
+        lambda <- par[1]
+        total_loglik <- 0
+        for (j in seq_along(reponses)) {
+          r <- reponses[j]
+          if (is.na(r) || !(r %in% actions)) next
+          probs <- qre_strategy(lambda, actions, bonus$gauche, bonus$egal)
+          idx <- which(actions == r)
+          p_r <- probs[idx]
+          total_loglik <- total_loglik + ifelse(p_r > 0, log(p_r), -1e6)
+        }
+        return(-total_loglik)
+      },
+      method = "L-BFGS-B", lower = 0.01, upper = 20
+    )
+    
+    lambda_estime <- opt$par[1]
+    strategie_qre <- qre_strategy(lambda_estime, actions, bonus$gauche, bonus$egal)
+    
+    df_pred <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = strategie_qre,
+      Type = "Prévu"
+    )
+    
+    Q  <- donneesQ[[q]]
+    Qr <- table(Q) / length(Q)
+    df_obs <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = as.numeric(Qr),
+      Type = "Observé"
+    )
+    
+    df_combined <- rbind(df_pred, df_obs)
+    
+    p <- ggplot(df_combined, aes(x = Action, y = Valeur, fill = Type)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      labs(title = paste("Question", q+1),
+           x = "Action possible", y = "Fréquence") +
+      scale_fill_manual(values = c("Observé" = "black", "Prévu" = "lightgrey")) +
+      theme_minimal(base_size = 10) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "none")
+    
+    plots[[length(plots) + 1]] <- p
+    
+  }, error = function(e) {
+    cat("Erreur pour la question", q, ":", e$message, "\n")
+  })
+}
+
+
+# Suppression de l'ancien PDF
+pdf_path <- "comparaison_QRE_5x3.pdf"
+if (file.exists(pdf_path)) file.remove(pdf_path)
+
+# Export en PDF
+library(ggpubr)
+pdf(pdf_path, width = 20, height = 12)
+ggarrange(plotlist = plots, ncol = 5, nrow = 3)
+dev.off()
 ```

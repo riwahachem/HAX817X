@@ -4,7 +4,7 @@ author: "SCAIA Matteo - HACHEM REDA Riwa - GILLET Louison"
 date: "`r Sys.Date()`"
 output:
   pdf_document:
-    toc: true
+    latex_engine: xelatex
 fontsize: 12pt
 lang: fr
 ---
@@ -21,6 +21,7 @@ library(tidyr)
 library(dplyr)
 
 donnees <- read_excel('../data/Exp_rience.xlsx')
+donneesQ = donnees[1:63,7:21]
 ```
 
 ```{r, warning=FALSE}
@@ -278,7 +279,7 @@ print(resultats_ch)
 
 Description : Calcule un score de Brier total sur l'ensemble des réponses aux questions selon un modèle de Hiérarchie Cognitive (bruité)
 
-```{r,}
+```{r, warning=FALSE}
 brier_score_total <- function(mu, s, reponses, questions, actions_map, k_max = 4) {
   
   # Initialisation 
@@ -375,4 +376,87 @@ for (q in questions) {
 
 # Affichage
 print(resultats_ch_par_question)
+```
+
+# Génération des graphiques
+
+```{r, warning=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(readxl)
+plots <- list()
+
+for (q in 1:15) {
+  actions <- actions_par_question[[q]]
+  bonus <- bonus_par_question[[q]]
+  
+  reponses <- sapply(donneesQ[[q]], function(rep) {
+    if (!is.na(rep) && grepl(":", rep)) {
+      as.numeric(trimws(strsplit(rep, ":")[[1]][2]))
+    } else {
+      as.numeric(trimws(rep))
+    }
+  })
+  
+  tryCatch({
+    opt <- optim(
+      par = c(mu = 1.5, s = 1.5),
+      fn = function(par) -log_likelihood_ch(par[1], par[2],
+                                            reponses = reponses,
+                                            questions = rep(q, length(reponses)),
+                                            actions_map = actions_par_question),
+      method = "L-BFGS-B",
+      lower = c(0.01, 0.01), upper = c(10, 10)
+    )
+    
+    mu <- opt$par[1]
+    s <- opt$par[2]
+    k_max <- 4
+    
+    poids_k <- dpois(0:k_max, lambda = s)
+    poids_k <- poids_k / sum(poids_k)
+    
+    strats_k <- lapply(0:k_max, function(k) {
+      ch_strategy(mu, k, actions, bonus$gauche, bonus$egal)
+    })
+    
+    strategie_ch <- Reduce(`+`, Map(`*`, poids_k, strats_k))
+    
+    df_pred <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = strategie_ch,
+      Type = "Prévu"
+    )
+    Q  <- donneesQ[[q]]
+    Qr <- table(Q) / length(Q)
+    df_obs <- data.frame(
+      Action = factor(actions, levels = actions),
+      Valeur = as.numeric(Qr),
+      Type = "Observé"
+    )
+    df_combined <- rbind(df_pred, df_obs)
+    
+    p <- ggplot(df_combined, aes(x = Action, y = Valeur, fill = Type)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      labs(title = paste("Question ", q+1),
+           x = "Action possible", y = "Fréquence") +
+      scale_fill_manual(values = c("Observé" = "black", "Prévu" = "lightgrey")) +
+      theme_minimal(base_size = 10) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "none")
+    
+    plots[[length(plots) + 1]] <- p
+    
+  }, error = function(e) {
+    cat("Erreur lors du traitement de la question", q, ":", e$message, "\n")
+  })
+}
+
+# Supprimer l'ancien PDF s'il existe
+if (file.exists("comparaison_CH_5x3.pdf")) file.remove("comparaison_CH_5x3.pdf")
+
+# Créer un nouveau PDF
+pdf("comparaison_CH_5x3.pdf", width = 20, height = 12)
+ggarrange(plotlist = plots, ncol = 5, nrow = 3)
+dev.off()
 ```
