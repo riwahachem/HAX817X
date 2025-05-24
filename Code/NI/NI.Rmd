@@ -379,7 +379,6 @@ for (q in 1:15) {
   })
 }
 
-# Exporter tous les graphiques sur une seule page PDF (5 colonnes × 3 lignes)
 pdf("comparaison_superposee_5x3.pdf", width = 20, height = 12)
 ggarrange(plotlist = plots, ncol = 5)
 dev.off()

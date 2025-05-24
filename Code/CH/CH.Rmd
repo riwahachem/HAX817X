@@ -262,8 +262,6 @@ for (i in 1:(nrow(donnees)-1)) {
                                                    VraisemblanceMax = max_vraisemblance,
                                                    Brier = brier_score))
   },
-  
-  # Gestion des erreurs : ligne de NA si problème 
   error = function(e) {
     resultats_ch <- rbind(resultats_ch, data.frame(id = i, mu = NA, s = NA, VraisemblanceMax = NA))
     cat("Erreur pour l'individu", i, ":", e$message, "\n")
@@ -451,11 +449,7 @@ for (q in 1:15) {
     cat("Erreur lors du traitement de la question", q, ":", e$message, "\n")
   })
 }
-
-# Supprimer l'ancien PDF s'il existe
 if (file.exists("comparaison_CH_5x3.pdf")) file.remove("comparaison_CH_5x3.pdf")
-
-# Créer un nouveau PDF
 pdf("comparaison_CH_5x3.pdf", width = 20, height = 12)
 ggarrange(plotlist = plots, ncol = 5, nrow = 3)
 dev.off()

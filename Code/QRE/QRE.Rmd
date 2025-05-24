@@ -380,13 +380,8 @@ for (q in 1:15) {
     cat("Erreur pour la question", q, ":", e$message, "\n")
   })
 }
-
-
-# Suppression de l'ancien PDF
 pdf_path <- "comparaison_QRE_5x3.pdf"
 if (file.exists(pdf_path)) file.remove(pdf_path)
-
-# Export en PDF
 library(ggpubr)
 pdf(pdf_path, width = 20, height = 12)
 ggarrange(plotlist = plots, ncol = 5, nrow = 3)
